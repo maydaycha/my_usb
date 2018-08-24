@@ -1,0 +1,3 @@
+config USB_ZEBU
+    tristate "Zebu Virtual Device driver"
+    help
