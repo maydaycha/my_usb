@@ -31,10 +31,8 @@ static int get_pipes(struct usb_zebu_data *zebu)
     /* Calculate and store the pipe values */
     zebu->send_ctrl_pipe = usb_sndctrlpipe(zebu->udev, 0);
     zebu->recv_ctrl_pipe = usb_rcvctrlpipe(zebu->udev, 0);
-    zebu->send_bulk_pipe = usb_sndbulkpipe(zebu->udev,
-        usb_endpoint_num(ep_blk_out));
-    zebu->recv_bulk_pipe = usb_rcvbulkpipe(zebu->udev,
-        usb_endpoint_num(ep_blk_in));
+    zebu->send_bulk_pipe = usb_sndbulkpipe(zebu->udev, usb_endpoint_num(ep_blk_out));
+    zebu->recv_bulk_pipe = usb_rcvbulkpipe(zebu->udev, usb_endpoint_num(ep_blk_in));
 
     return 0;
 }
@@ -77,6 +75,8 @@ static void usb_zebu_disconnect(struct usb_interface *intf)
 {
     struct usb_zebu_data *zebu = usb_get_intfdata(intf);
 
+    kfree(zebu);
+
     dev_err(&zebu->intf->dev, "call %s \n", __func__);
 }
 
@@ -104,11 +104,11 @@ static int usb_zebu_resume(struct usb_interface *intf)
 #define USB_PR_BULK 0x50   /* bulk only */
 static struct usb_device_id usb_zebu_usb_ids[] = {
     { USB_DEVICE(0x0499, 0x3002) }, /* Match via VID, PID */
-    { USB_INTERFACE_INFO(USB_CLASS_MASS_STORAGE, USB_SC_SCSI, USB_PR_BULK) },
+    { USB_INTERFACE_INFO(USB_CLASS_MASS_STORAGE, USB_SC_SCSI, USB_PR_BULK) }, /* Bulk only transfer USB storage */
     {},
 };
 
-/*struct block_device_operations *fops;*/
+
 static struct usb_driver usb_zebu_driver = {
     .name = DRV_NAME,
     .probe = usb_zebu_probe,
