@@ -20,15 +20,30 @@ extern void unregister_chrdev_region(dev_t from, unsigned count);
 
 static int rtk_usb_open(struct inode *inode, struct file *filp)
 {
-    pr_err("inode(%p), filp->f_inode(%p) \n",
-            inode, filp->f_inode);
+    struct usb_zebu_data *zebu = cdev_to_zebu(inode->i_cdev);
+
+    if (zebu->current_urb)
+        return -EBUSY;
+
+    zebu->current_urb = usb_alloc_urb(0, GFP_KERNEL);
+    if (!zebu->current_urb)
+        return -ENOMEM;
+
+    usb_zebu_err(zebu, " %s call \n", __func__);
+
     return 0;
 }
 
 static int rtk_usb_release(struct inode *inode, struct file *filp)
 {
-    pr_err("inode(%p), filp->f_inode(%p) \n",
-            inode, filp->f_inode);
+    struct usb_zebu_data *zebu = cdev_to_zebu(inode->i_cdev);
+
+    if (zebu->current_urb) {
+        usb_free_urb(zebu->current_urb);
+        zebu->current_urb = NULL;
+    }
+
+    usb_zebu_err(zebu, " %s call \n", __func__);
 
     return 0;
 }
@@ -93,24 +108,24 @@ static ssize_t rtk_usb_write(struct file *filp, const char __user *buffer, size_
     int result = 0;
     char *buf = kzalloc(count, GFP_KERNEL);
 
-    if (!buf)
+    if (unlikely(!buf || !zebu->current_urb))
         return -ENOMEM;
 
-    if (unlikely(copy_from_user(buf, buffer, count)))
-        return -EINVAL;
+    if (unlikely(copy_from_user(buf, buffer, count))) {
+        result = -EINVAL;
+        goto out;
+    }
 
     pr_err("write: %s \n", buf);
     pr_err("count: %u \n", count);
-
-    zebu->current_urb = usb_alloc_urb(0, GFP_KERNEL);
-    if (!zebu->current_urb)
-        return -ENOMEM;
 
     /* fill and submit the URB */
     usb_fill_bulk_urb(zebu->current_urb, zebu->udev, zebu->send_bulk_pipe, buf, count,
                 zebu_urb_blocking_completion, NULL);
     result = zebu_msg_common(zebu, 0);
 
+out:
+    kfree(buf);
     return result ? result : zebu->current_urb->actual_length;
 }
 
@@ -129,8 +144,6 @@ int rtk_usb_cdev_init(struct usb_zebu_data *zebu)
 {
     int ret = 0;
     char name[50];
-
-    pr_err("zebu(%p) \n", zebu);
 
     if (snprintf(name, sizeof(name), "zebu-%s", dev_name(&zebu->udev->dev)) <= 0)
         return -ENOMEM;
