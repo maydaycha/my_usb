@@ -2,14 +2,16 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/module.h>
 #include "usb.h"
 
-#define RTK_USB_DEV_NUM  1
-#define NAME    "zebu"
+#define RTK_USB_DEV_NUM  16
+#define NAME    "zebu-char"
 
-static dev_t rtk_usb_dev_t;
+static int dev_cnt = 0;
+static dev_t rtk_usb_dev_t = 0;
 static struct cdev rtk_usb_cdev;
-static struct class *rtk_usb_class;
+static struct class *rtk_usb_class = NULL;
 
 
 extern int alloc_chrdev_region(dev_t *dev, unsigned baseminor, unsigned count, const char *name);
@@ -89,8 +91,8 @@ static ssize_t rtk_usb_write(struct file *filp, const char __user *buffer, size_
 {
     struct usb_zebu_data *zebu = cdev_to_zebu(filp->f_inode->i_cdev);
     int result = 0;
-
     char *buf = kzalloc(count, GFP_KERNEL);
+
     if (!buf)
         return -ENOMEM;
 
@@ -98,6 +100,7 @@ static ssize_t rtk_usb_write(struct file *filp, const char __user *buffer, size_
         return -EINVAL;
 
     pr_err("write: %s \n", buf);
+    pr_err("count: %u \n", count);
 
     zebu->current_urb = usb_alloc_urb(0, GFP_KERNEL);
     if (!zebu->current_urb)
@@ -107,15 +110,8 @@ static ssize_t rtk_usb_write(struct file *filp, const char __user *buffer, size_
     usb_fill_bulk_urb(zebu->current_urb, zebu->udev, zebu->send_bulk_pipe, buf, count,
                 zebu_urb_blocking_completion, NULL);
     result = zebu_msg_common(zebu, 0);
-    pr_err("returned urb status=%d \n", result);
 
     return result ? result : zebu->current_urb->actual_length;
-}
-
-
-static long __maybe_unused rtk_usb_compat_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-    return 0;
 }
 
 
@@ -126,30 +122,53 @@ struct file_operations zebu_chardev_fops = {
     .release          = rtk_usb_release,
     .read             = rtk_usb_read,
     .write            = rtk_usb_write,
-#if 0
-    .unlocked_ioctl   = rtk_usb_ioctl,
-    .compat_ioctl     = rtk_usb_compat_ioctl,
-#endif
 };
 
 
 int rtk_usb_cdev_init(struct usb_zebu_data *zebu)
 {
     int ret = 0;
+    char name[50];
 
     pr_err("zebu(%p) \n", zebu);
+
+    if (snprintf(name, sizeof(name), "zebu-%s", dev_name(&zebu->udev->dev)) <= 0)
+        return -ENOMEM;
+
+    cdev_init(&zebu->char_dev, &zebu_chardev_fops);
+    ret = cdev_add(&zebu->char_dev, rtk_usb_dev_t + dev_cnt, 1);
+    if (ret) {
+        pr_err("fail to add char dev to system \n");
+        return -ENODEV;
+    }
+
+    dev_cnt++;
+
+    if (!device_create(rtk_usb_class, NULL, zebu->char_dev.dev, zebu, name)) {
+        pr_err("fail to cearte device node for rtk_usb \n");
+        ret = -ENOMEM;
+        goto FAIL_CREATE_DEV;
+    }
+
+    return ret;
+
+FAIL_CREATE_DEV:
+    cdev_del(&rtk_usb_cdev);
+    dev_cnt--;
+
+    return ret;
+}
+EXPORT_SYMBOL(rtk_usb_cdev_init);
+
+
+int __init init_class_devt_region(void)
+{
+    int ret = 0;
 
     ret = alloc_chrdev_region(&rtk_usb_dev_t, 0, RTK_USB_DEV_NUM, NAME);
     if (ret) {
         pr_err("fail to get char dev Major and Minor \n");
-        goto FAIL_ALLOC_CHRDEV_MAJOR;
-    }
-
-    cdev_init(&zebu->char_dev, &zebu_chardev_fops);
-    ret = cdev_add(&zebu->char_dev, rtk_usb_dev_t, RTK_USB_DEV_NUM);
-    if (ret) {
-        pr_err("fail to add char dev to system \n");
-        goto FAIL_ADD_CHRDEV;
+        return -ENOMEM;
     }
 
     rtk_usb_class = class_create(THIS_MODULE, NAME);
@@ -159,23 +178,22 @@ int rtk_usb_cdev_init(struct usb_zebu_data *zebu)
         goto FAIL_CREATE_CLASS;
     }
 
-    if (!device_create(rtk_usb_class, NULL, zebu->char_dev.dev, zebu, NAME)) {
-        pr_err("fail to cearte device node for rtk_usb \n");
-        ret = -ENOMEM;
-        goto FAIL_CREATE_DEVICE;
-    }
+    return 0;
 
-    return ret;
-
-FAIL_CREATE_DEVICE:
-    class_destroy(rtk_usb_class);
-    rtk_usb_class = NULL;
 FAIL_CREATE_CLASS:
-    cdev_del(&rtk_usb_cdev);
-FAIL_ADD_CHRDEV:
     unregister_chrdev_region(rtk_usb_dev_t, RTK_USB_DEV_NUM);
-FAIL_ALLOC_CHRDEV_MAJOR:
     return ret;
 }
-EXPORT_SYMBOL(rtk_usb_cdev_init);
 
+
+void __exit exit_class_devt_region(void)
+{
+    class_destroy(rtk_usb_class);
+    rtk_usb_class = NULL;
+    unregister_chrdev_region(rtk_usb_dev_t, RTK_USB_DEV_NUM);
+}
+
+
+
+module_init(init_class_devt_region);
+module_exit(exit_class_devt_region);
