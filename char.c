@@ -193,8 +193,7 @@ void rtk_usb_cdev_destroy(struct usb_zebu_data *zebu)
 EXPORT_SYMBOL(rtk_usb_cdev_destroy);
 
 
-
-int __init init_class_devt_region(void)
+int init_class_devt_region(void)
 {
     int ret = 0;
 
@@ -217,16 +216,13 @@ FAIL_CREATE_CLASS:
     unregister_chrdev_region(rtk_usb_dev_t, MAX_CHAR_DEV);
     return ret;
 }
+EXPORT_SYMBOL(init_class_devt_region);
 
 
-void __exit exit_class_devt_region(void)
+void exit_class_devt_region(void)
 {
     class_destroy(rtk_usb_class);
     rtk_usb_class = NULL;
     unregister_chrdev_region(rtk_usb_dev_t, MAX_CHAR_DEV);
 }
-
-
-
-module_init(init_class_devt_region);
-module_exit(exit_class_devt_region);
+EXPORT_SYMBOL(exit_class_devt_region);

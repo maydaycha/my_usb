@@ -122,12 +122,14 @@ static struct usb_driver usb_zebu_driver = {
 
 static int __init usb_zebu_driver_init(void)
 {
-    return usb_register(&usb_zebu_driver);
+    return init_class_devt_region() ||
+        usb_register(&usb_zebu_driver);
 }
 
 
 static void __exit usb_zebu_driver_exit(void)
 {
+    exit_class_devt_region();
     usb_deregister(&usb_zebu_driver);
 }
 

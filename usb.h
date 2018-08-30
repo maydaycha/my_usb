@@ -30,5 +30,7 @@ static inline struct usb_zebu_data *cdev_to_zebu(struct cdev *cdev)
 
 extern int rtk_usb_cdev_create(struct usb_zebu_data *zebu);
 extern void rtk_usb_cdev_destroy(struct usb_zebu_data *zebu);
+extern int init_class_devt_region(void);
+extern void exit_class_devt_region(void);
 
 #endif
