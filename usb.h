@@ -23,11 +23,12 @@ struct usb_zebu_data {
         dev_err(&zebu->udev->dev, fmt, ## args)
 
 
-
 static inline struct usb_zebu_data *cdev_to_zebu(struct cdev *cdev)
 {
     return container_of(cdev, struct usb_zebu_data, char_dev);
 }
 
-extern int rtk_usb_cdev_init(struct usb_zebu_data *zebu);
+extern int rtk_usb_cdev_create(struct usb_zebu_data *zebu);
+extern void rtk_usb_cdev_destroy(struct usb_zebu_data *zebu);
+
 #endif

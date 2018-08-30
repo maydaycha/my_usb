@@ -19,8 +19,6 @@ static int get_pipes(struct usb_zebu_data *zebu)
     /*
     * Find the first endpoint of each type we need.
     * We are expecting a minimum of 2 endpoints - in and out (bulk).
-    * An optional interrupt-in is OK (necessary for CBI protocol).
-    * We will ignore any others.
     */
     ret = usb_find_common_endpoints(alt, &ep_blk_in, &ep_blk_out, NULL, NULL);
     if (ret) {
@@ -59,7 +57,7 @@ static int usb_zebu_probe(struct usb_interface *intf,
 
     dev_err(&zebu->intf->dev, "call %s \n", __func__);
 
-    ret = rtk_usb_cdev_init(zebu);
+    ret = rtk_usb_cdev_create(zebu);
     if (ret)
         goto probe_fail;
 
@@ -67,6 +65,7 @@ static int usb_zebu_probe(struct usb_interface *intf,
 
 probe_fail:
     kfree(zebu);
+    usb_set_intfdata(intf, NULL);
     return ret;
 }
 
@@ -75,7 +74,9 @@ static void usb_zebu_disconnect(struct usb_interface *intf)
 {
     struct usb_zebu_data *zebu = usb_get_intfdata(intf);
 
+    rtk_usb_cdev_destroy(zebu);
     kfree(zebu);
+    usb_set_intfdata(intf, NULL);
 
     dev_err(&zebu->intf->dev, "call %s \n", __func__);
 }
